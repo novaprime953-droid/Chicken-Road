@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Chicken Road — Arcade Game</title>
+<style>
+:root{--ink:#172033;--muted:#637083;--gold:#ffd34e;--green:#55b86a;--panel:#fff}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:linear-gradient(145deg,#eaf7ff,#fff4d7);color:var(--ink)}
+body{display:grid;place-items:center;padding:14px}.app{width:min(100%,900px)}header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px}.logo{width:48px;height:48px;border-radius:15px;background:#ffe16a;display:grid;place-items:center;font-size:29px;box-shadow:0 5px 0 #e6b83d}.brand h1{font-size:clamp(22px,4vw,32px);margin:0;letter-spacing:-1px}.brand p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.stats{display:flex;gap:8px}.stat{background:#fff;border:1px solid #e7edf3;border-radius:13px;padding:8px 12px;min-width:72px;text-align:center;box-shadow:0 4px 12px #18334b0b}.stat small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px}.stat strong{font-size:20px}
+.gamecard{background:#fff;border:1px solid #e6edf3;border-radius:22px;padding:12px;box-shadow:0 18px 50px #25415b18}
+.canvas-wrap{position:relative;overflow:hidden;border-radius:15px;background:#a8dff7;line-height:0}canvas{display:block;width:100%;height:auto;touch-action:manipulation}
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#14203366;padding:18px;line-height:1.4}.overlay.hidden{display:none}.modal{width:min(100%,340px);background:#fff;border-radius:20px;padding:22px;text-align:center;box-shadow:0 15px 40px #0003}.modal .big{font-size:52px}.modal h2{margin:4px 0 8px;font-size:26px}.modal p{margin:0 0 16px;color:var(--muted);font-size:14px}
+button{border:0;cursor:pointer;font:inherit;font-weight:750;border-radius:12px;padding:12px 18px;transition:transform .12s,filter .12s}button:active{transform:translateY(2px)}.primary{background:var(--gold);color:#3d3000;box-shadow:0 4px 0 #d9ac2e}.secondary{background:#eef3f7;color:#28384b}.controls{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 2px 2px}.hint{font-size:12px;color:var(--muted)}.dpad{display:grid;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(2,38px);gap:5px}.dpad button{padding:0;background:#edf4f8;color:#203047;font-size:19px;box-shadow:0 3px 0 #d4e0e8}.dpad .up{grid-column:2;grid-row:1}.dpad .left{grid-column:1;grid-row:2}.dpad .down{grid-column:2;grid-row:2}.dpad .right{grid-column:3;grid-row:2}.actions{display:flex;gap:7px;flex-wrap:wrap}.actions button{padding:9px 12px;font-size:12px}
+footer{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:#7b8796;font-size:11px;margin:10px 4px 0}
+@media(max-width:520px){body{padding:8px}.gamecard{padding:7px;border-radius:17px}.stats{gap:4px}.stat{padding:7px 8px;min-width:56px}.stat strong{font-size:17px}.logo{width:40px;height:40px}.brand p{display:none}.controls{align-items:flex-end}.hint{max-width:140px}.actions{justify-content:flex-end}.actions button{padding:8px 9px}}
+</style>
+</head>
+<body>
+<main class="app">
+<header>
+ <div class="brand"><div class="logo">🐔</div><div><h1>Chicken Road</h1><p>Cross smart. Keep moving!</p></div></div>
+ <div class="stats"><div class="stat"><small>Score</small><strong id="score">0</strong></div><div class="stat"><small>Best</small><strong id="best">0</strong></div><div class="stat"><small>Level</small><strong id="level">1</strong></div></div>
+</header>
+<section class="gamecard">
+ <div class="canvas-wrap">
+  <canvas id="game" width="720" height="800" aria-label="Chicken Road game"></canvas>
+  <div class="overlay" id="overlay"><div class="modal"><div class="big" id="modalEmoji">🐔</div><h2 id="modalTitle">Ready to cross?</h2><p id="modalText">Guide your chicken across busy roads. Each safe step earns a point. Avoid cars and trucks!</p><button class="primary" id="startBtn">Start Game ▶</button></div></div>
+ </div>
+ <div class="controls">
+  <div><div class="hint"><b>Controls</b><br>Arrow keys / WASD, or tap the arrows. Swipe on the game to move.</div></div>
+  <div class="dpad" aria-label="Movement controls">
+   <button class="up" data-move="up" aria-label="Move up">▲</button><button class="left" data-move="left" aria-label="Move left">◀</button><button class="down" data-move="down" aria-label="Move down">▼</button><button class="right" data-move="right" aria-label="Move right">▶</button>
+  </div>
+  <div class="actions"><button class="secondary" id="pauseBtn">Ⅱ Pause</button><button class="secondary" id="soundBtn">🔊 Sound</button><button class="secondary" id="restartBtn">↻ Restart</button></div>
+ </div>
+</section>
+<footer><span>Tip: keep moving forward to increase your score.</span><span>Runs locally in your browser • No account needed</span></footer>
+</main>
+<script>
+(() => {
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const W=720,H=800, tile=60, cols=12, rows=13, roadRows=[2,3,5,6,8,9,11], startY=rows-2;
+const $=id=>document.getElementById(id);
+let state='menu',score=0,best=Number(localStorage.getItem('chickenRoadBest')||0),level=1,frame=0,last=0,raf=0,sound=true,audioCtx=null;
+let chicken={x:5,y:startY,hop:0}, lanes=[], particles=[], moveLock=false;
+$('best').textContent=best;
+const carColors=['#ef5350','#4388f5','#f5a623','#8b65d9','#22a879','#f06fa5'];
+function initLanes(){
+ lanes=[];
+ for(const r of roadRows){
+  const dir=(r%2===0)?1:-1, speed=(1.25+Math.random()*0.9)*(1+level*.08);
+  const width=tile*(1.15+Math.random()*.75), gap=tile*(1.5+Math.random()*1.5);
+  let cars=[];let x=Math.random()*W;
+  for(let i=0;i<3;i++){cars.push({x:x+i*(width+gap),w:width,h:31,color:carColors[Math.floor(Math.random()*carColors.length)],type:Math.random()<.18?'truck':'car'});}
+  lanes.push({row:r,dir,speed,cars});
+ }
+}
+function beep(freq=500,dur=.07,type='sine'){
+ if(!sound)return;try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.value=.05;o.connect(g);g.connect(audioCtx.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);o.stop(audioCtx.currentTime+dur)}catch(e){}
+}
+function reset(){score=0;level=1;frame=0;chicken={x:5,y:startY,hop:0};particles=[];initLanes();updateStats();state='playing';$('overlay').classList.add('hidden');$('pauseBtn').textContent='Ⅱ Pause';last=performance.now();cancelAnimationFrame(raf);raf=requestAnimationFrame(loop)}
+function updateStats(){$('score').textContent=score;$('best').textContent=best;$('level').textContent=level}
+function showOverlay(title,txt,emoji,button='Play Again ↻'){ $('modalTitle').textContent=title;$('modalText').textContent=txt;$('modalEmoji').textContent=emoji;$('startBtn').textContent=button;$('overlay').classList.remove('hidden');}
+function gameOver(){if(state!=='playing')return;state='over';beep(120,.28,'sawtooth');if(score>best){best=score;localStorage.setItem('chickenRoadBest',best)}updateStats();showOverlay('Road blocked!',`You scored ${score} point${score===1?'':'s'}. Best score: ${best}. Give it another try!`,'💥','Play Again ↻');}
+function safeStep(){score++;if(score>best){best=score;localStorage.setItem('chickenRoadBest',best)}level=1+Math.floor(score/10);beep(650,.05);updateStats();if(chicken.y>startY){chicken.y=startY;}}
+function move(dir){
+ if(state!=='playing'||moveLock)return;
+ let nx=chicken.x,ny=chicken.y;
+ if(dir==='up')ny--;if(dir==='down')ny++;if(dir==='left')nx--;if(dir==='right')nx++;
+ nx=Math.max(0,Math.min(cols-1,nx));ny=Math.max(0,Math.min(rows-1,ny));
+ if(nx===chicken.x&&ny===chicken.y)return;
+ chicken.x=nx;chicken.y=ny;chicken.hop=8;moveLock=true;setTimeout(()=>moveLock=false,100);
+ if(dir==='up'){safeStep();if(chicken.y===0){score+=4;level=1+Math.floor(score/10);chicken.y=startY;score++;updateStats();beep(900,.1);}}
+ if(dir==='down'&&chicken.y>=startY)chicken.y=startY;
+ checkCollision();draw(); 
+}
+function checkCollision(){
+ const px=chicken.x*tile+tile/2,py=chicken.y*tile+tile/2;
+ for(const lane of lanes){if(lane.row!==chicken.y)continue;for(const c of lane.cars){if(px+17>c.x&&px-17<c.x+c.w&&py+17>H-(rows-lane.row)*tile+14&&py-17<H-(rows-lane.row)*tile+48){gameOver();return}}}
+}
+function rounded(x,y,w,h,r,fill){ctx.fillStyle=fill;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function drawBackground(){
+ ctx.fillStyle='#9bd9f3';ctx.fillRect(0,0,W,H);
+ for(let r=0;r<rows;r++){
+  const y=H-(r+1)*tile;
+  if(roadRows.includes(r)){
+   ctx.fillStyle='#46505d';ctx.fillRect(0,y,W,tile);
+   ctx.fillStyle='#fff';ctx.globalAlpha=.55;
+   for(let x=((frame*(r%2?2:-2))%100+100)%100-100;x<W;x+=100)ctx.fillRect(x,y+tile/2-2,48,4);
+   ctx.globalAlpha=1;
+   ctx.fillStyle='#333d49';ctx.fillRect(0,y,W,4);ctx.fillRect(0,y+tile-4,W,4);
+  }else{
+   ctx.fillStyle=(r%2===0)?'#7fce75':'#8bd77e';ctx.fillRect(0,y,W,tile);
+   for(let x=18+(r%3)*9;x<W;x+=65){ctx.fillStyle='#5bb75e';ctx.beginPath();ctx.arc(x,y+18+(x%21),3,0,Math.PI*2);ctx.fill();ctx.fillStyle='#b5eb88';ctx.fillRect(x+9,y+40,3,5)}
+  }
+ }
+ // start safe strip
+ const sy=H-(startY+1)*tile;ctx.fillStyle='#e8dca0';ctx.fillRect(0,sy,W,tile);
+ ctx.fillStyle='#8fbd74';ctx.fillRect(0,0,W,5);
+}
+function drawCars(){
+ for(const lane of lanes){const y=H-(lane.row+1)*tile+15;
+  for(const c of lane.cars){
+   const x=c.x;if(x>W+80||x+c.w< -80)continue;
+   rounded(x,y+4,c.w,29,8,c.color);
+   // windshield and windows
+   ctx.fillStyle='#c9f0fa';ctx.beginPath();ctx.roundRect(x+c.w*.23,y+7,c.w*.26,12,4);ctx.fill();ctx.beginPath();ctx.roundRect(x+c.w*.55,y+7,c.w*.25,12,4);ctx.fill();
+   ctx.fillStyle='#283344';ctx.fillRect(x+8,y+29,13,5);ctx.fillRect(x+c.w-22,y+29,13,5);
+   ctx.fillStyle='#fff2b5';ctx.fillRect(lane.dir>0?x+c.w-5:x+1,y+15,4,6);
+   if(c.type==='truck'){ctx.fillStyle='#e5eaf0';ctx.fillRect(x+c.w*.65,y+1,c.w*.3,7)}
+  }
+ }
+}
+function drawChicken(){
+ const x=chicken.x*tile+tile/2,y=H-(chicken.y+.5)*tile-(chicken.hop?Math.sin(chicken.hop/8*Math.PI)*6:0);
+ // shadow
+ ctx.fillStyle='#0002';ctx.beginPath();ctx.ellipse(x,y+20,19,6,0,0,Math.PI*2);ctx.fill();
+ ctx.save();ctx.translate(x,y);
+ // feet
+ ctx.strokeStyle='#e78b2d';ctx.lineWidth=4;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(-7,14);ctx.lineTo(-9,21);ctx.lineTo(-15,21);ctx.moveTo(7,14);ctx.lineTo(9,21);ctx.lineTo(15,21);ctx.stroke();
+ // body
+ ctx.fillStyle='#fff8e8';ctx.beginPath();ctx.ellipse(0,1,18,20,0,0,Math.PI*2);ctx.fill();
+ // wing
+ ctx.fillStyle='#f2d7a1';ctx.beginPath();ctx.ellipse(-5,5,9,11,-.3,0,Math.PI*2);ctx.fill();
+ // head
+ ctx.fillStyle='#fff8e8';ctx.beginPath();ctx.arc(1,-15,12,0,Math.PI*2);ctx.fill();
+ // comb
+ ctx.fillStyle='#ef4e4e';ctx.beginPath();ctx.arc(-4,-26,4,0,Math.PI*2);ctx.arc(2,-28,4,0,Math.PI*2);ctx.arc(7,-24,4,0,Math.PI*2);ctx.fill();
+ // beak
+ ctx.fillStyle='#f5a623';ctx.beginPath();ctx.moveTo(11,-16);ctx.lineTo(22,-12);ctx.lineTo(11,-9);ctx.fill();
+ // eye
+ ctx.fillStyle='#263448';ctx.beginPath();ctx.arc(5,-18,2.5,0,Math.PI*2);ctx.fill();
+ ctx.restore();
+}
+function draw(){
+ drawBackground();drawCars();drawChicken();
+ // tiny title marker
+ ctx.fillStyle='#17324a';ctx.font='bold 15px system-ui';ctx.fillText('↑ KEEP CROSSING',14,25);
+}
+function loop(t){
+ if(state!=='playing')return;
+ const dt=Math.min(35,t-last);last=t;frame+=dt/16.67;
+ for(const lane of lanes){
+  lane.speed=(1.25+Math.min(level,20)*.09)*(lane.row%2===0?1:-1);
+  for(const c of lane.cars){c.x+=lane.dir*lane.speed*(dt/16.67);if(lane.dir>0&&c.x>W+30)c.x=-c.w-70-Math.random()*90;if(lane.dir<0&&c.x+c.w< -30)c.x=W+30+Math.random()*90;}
+ }
+ checkCollision();draw();raf=requestAnimationFrame(loop);
+}
+$('startBtn').addEventListener('click',()=>reset());
+$('restartBtn').addEventListener('click',()=>reset());
+$('pauseBtn').addEventListener('click',()=>{
+ if(state==='playing'){state='paused';cancelAnimationFrame(raf);$('pauseBtn').textContent='▶ Resume';showOverlay('Game paused','Take a breather, then jump back into the road.','⏸','Resume ▶');}
+ else if(state==='paused') {state='playing';$('overlay').classList.add('hidden');$('pauseBtn').textContent='Ⅱ Pause';last=performance.now();raf=requestAnimationFrame(loop);}
+ else if(state==='over'||state==='menu')reset();
+});
+$('soundBtn').addEventListener('click',()=>{sound=!sound;$('soundBtn').textContent=sound?'🔊 Sound':'🔇 Muted';if(sound)beep()});
+document.querySelectorAll('[data-move]').forEach(b=>b.addEventListener('click',()=>{if(state==='menu'||state==='over')reset();move(b.dataset.move)}));
+window.addEventListener('keydown',e=>{
+ const map={ArrowUp:'up',w:'up',W:'up',ArrowDown:'down',s:'down',S:'down',ArrowLeft:'left',a:'left',A:'left',ArrowRight:'right',d:'right',D:'right'};
+ if(e.code==='Space'){e.preventDefault();if(state==='menu'||state==='over')reset();else if(state==='playing')$('pauseBtn').click();else if(state==='paused')$('pauseBtn').click();return}
+ const d=map[e.key];if(d){e.preventDefault();if(state==='menu'||state==='over')reset();move(d)}
+});
+let touch=null;canvas.addEventListener('touchstart',e=>{const t=e.changedTouches[0];touch={x:t.clientX,y:t.clientY};},{passive:true});
+canvas.addEventListener('touchend',e=>{if(!touch)return;const t=e.changedTouches[0],dx=t.clientX-touch.x,dy=t.clientY-touch.y;touch=null;if(Math.max(Math.abs(dx),Math.abs(dy))<18){if(state==='menu'||state==='over')reset();else move('up')}else if(Math.abs(dx)>Math.abs(dy))move(dx>0?'right':'left');else move(dy>0?'down':'up')},{passive:true});
+initLanes();draw();
+})();
+</script>
+</body>
+</html>
